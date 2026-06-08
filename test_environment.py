@@ -1641,6 +1641,7 @@ def _fallback_play(path: Path):
     try:
         import winsound
         winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+        print(f"[audio] winsound play ok: {path.name}")
         return True
     except Exception:
         print(f"[audio] fallback failed to play {path}")
