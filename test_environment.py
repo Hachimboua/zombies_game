@@ -1594,21 +1594,79 @@ class WaveManager(Entity):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Load weapon sounds if present
+# Load weapon sounds and configure playback parameters
 # ──────────────────────────────────────────────────────────────────────────────
 SOUND_DIR = Path(__file__).parent / 'sounds'
 GUNSHOT_PATH = SOUND_DIR / 'gunshot.wav'
 RELOAD_PATH = SOUND_DIR / 'reload.wav'
+# Playback tuning (adjust these)
+GUN_CROP_LEN = 0.12        # how long to play a cropped shot on rapid clicks
+GUN_MIN_INTERVAL = 0.20    # time (s) between shots considered "rapid"
+GUNSHOT_VOLUME = 0.95
+RELOAD_VOLUME = 0.9
+GUN_PITCH_VARIATION = 0.06  # random +/- variation applied to shot pitch
+
 GUNSHOT_SND = None
 RELOAD_SND = None
+USE_WINSOUND = sys.platform.startswith('win')
+if USE_WINSOUND:
+    print('[audio] running on Windows — preferring winsound fallback (no build tools needed)')
 try:
-    if GUNSHOT_PATH.exists():
-        GUNSHOT_SND = Audio(str(GUNSHOT_PATH), loop=False, autoplay=False)
-    if RELOAD_PATH.exists():
-        RELOAD_SND = Audio(str(RELOAD_PATH), loop=False, autoplay=False)
+    if not USE_WINSOUND:
+        if GUNSHOT_PATH.exists():
+            GUNSHOT_SND = Audio(str(GUNSHOT_PATH), loop=False, autoplay=False)
+            try:
+                GUNSHOT_SND.volume = GUNSHOT_VOLUME
+            except Exception:
+                pass
+        if RELOAD_PATH.exists():
+            RELOAD_SND = Audio(str(RELOAD_PATH), loop=False, autoplay=False)
+            try:
+                RELOAD_SND.volume = RELOAD_VOLUME
+            except Exception:
+                pass
 except Exception:
     GUNSHOT_SND = None
     RELOAD_SND = None
+finally:
+    # debug info about sound loading
+    try:
+        print(f"[audio] gunshot present: {GUNSHOT_PATH.exists()}, loaded: {GUNSHOT_SND is not None}")
+        print(f"[audio] reload  present: {RELOAD_PATH.exists()}, loaded: {RELOAD_SND is not None}")
+    except Exception:
+        pass
+
+# Fallback async player for Windows (falls back to winsound)
+def _fallback_play(path: Path):
+    try:
+        import winsound
+        winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+        return True
+    except Exception:
+        print(f"[audio] fallback failed to play {path}")
+        return False
+
+
+def _play_audio_path(path: Path, sound_obj=None, volume=None, pitch=None, stop_after=None):
+    if sound_obj is not None:
+        try:
+            if volume is not None:
+                sound_obj.volume = volume
+        except Exception:
+            pass
+        try:
+            if pitch is not None:
+                sound_obj.pitch = pitch
+        except Exception:
+            pass
+        try:
+            sound_obj.play()
+            if stop_after is not None:
+                invoke(lambda: sound_obj.stop(), delay=stop_after)
+            return True
+        except Exception:
+            pass
+    return _fallback_play(path)
 
 class Gun(Entity):
     def __init__(self, player_entity):
@@ -1711,22 +1769,28 @@ class Gun(Entity):
             elif isinstance(hit.entity, TntBarrel):
                 hit.entity.take_damage(1)
 
-        # Play gunshot sound; crop short bursts for rapid-fire
+        # Play gunshot sound; crop short bursts for rapid-fire, add pitch variance
         try:
             now = time.time() if hasattr(time, 'time') else 0
-            if GUNSHOT_SND:
-                try:
-                    if getattr(GUNSHOT_SND, 'playing', False):
-                        GUNSHOT_SND.stop()
-                except Exception:
-                    pass
-                if now - getattr(self, '_last_shot_time', 0) < 0.20:
-                    # rapid click — crop the sound slightly
-                    GUNSHOT_SND.play()
-                    invoke(lambda: GUNSHOT_SND.stop(), delay=0.12)
-                else:
-                    GUNSHOT_SND.play()
+            shot_pitch = 1.0
+            if GUN_PITCH_VARIATION and GUN_PITCH_VARIATION > 0:
+                shot_pitch += random.uniform(-GUN_PITCH_VARIATION, GUN_PITCH_VARIATION)
+            if now - getattr(self, '_last_shot_time', 0) < GUN_MIN_INTERVAL:
+                # rapid click — play a cropped slice
+                _play_audio_path(GUNSHOT_PATH, GUNSHOT_SND,
+                                 volume=GUNSHOT_VOLUME,
+                                 pitch=shot_pitch,
+                                 stop_after=GUN_CROP_LEN)
+            else:
+                _play_audio_path(GUNSHOT_PATH, GUNSHOT_SND,
+                                 volume=GUNSHOT_VOLUME,
+                                 pitch=shot_pitch)
             self._last_shot_time = now
+        except Exception:
+            pass
+        # debug: report attempted playback
+        try:
+            print(f"[audio] shot play attempt — gunshot_loaded={GUNSHOT_SND is not None}")
         except Exception:
             pass
 
@@ -1736,13 +1800,21 @@ class Gun(Entity):
         self._reloading    = True
         self._reload_timer = self.reload_time
         message_log.show('Reloading…', self.reload_time)
-        # play reload sound for the duration
+        # play reload sound for the duration (avoid retriggering if already playing)
         try:
-            if RELOAD_SND:
-                RELOAD_SND.play()
-                invoke(lambda: RELOAD_SND.stop(), delay=self.reload_time)
+            if not getattr(RELOAD_SND, 'playing', False):
+                # small pitch variation so repeated reloads don't sound identical
+                reload_pitch = 1.0 + random.uniform(-0.02, 0.02)
+                _play_audio_path(RELOAD_PATH, RELOAD_SND,
+                                 volume=RELOAD_VOLUME,
+                                 pitch=reload_pitch,
+                                 stop_after=self.reload_time)
         except Exception:
             pass
+            try:
+                print(f"[audio] reload play attempt — reload_loaded={RELOAD_SND is not None}")
+            except Exception:
+                pass
 
 
 # ──────────────────────────────────────────────────────────────────────────────
