@@ -10,8 +10,7 @@ Controls
   Mouse         Look
   Space         Jump
   E             Interact with object under crosshair
-  T             Toggle dither shader on/off
-  ESC           Quit
+    ESC           Open menu
 
 Goal
 ----
@@ -37,8 +36,16 @@ from pathlib import Path
 from functools import lru_cache
 import math
 import random
+import sys
 
 HUD_SPRITES_DIR = Path(__file__).resolve().parent / 'textures' / 'sprites'
+
+# UI Theme
+THEME_BG = color.rgba(10, 12, 16, 220)
+THEME_PANEL = color.rgba(20, 24, 30, 200)
+THEME_ACCENT = color.rgb(255, 200, 80)
+THEME_TEXT = color.rgb(235, 235, 230)
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -108,6 +115,11 @@ def set_nearest(entity: Entity) -> None:
         t.setMagfilter(SamplerState.FT_nearest)
         t.setMinfilter(SamplerState.FT_nearest)
         t.setAnisotropicDegree(0)
+
+
+def make_ui_card(parent, position, scale, alpha=150, color_rgb=(0, 0, 0)):
+    return Entity(parent=parent, model='quad', position=position,
+                  scale=scale, color=color.rgba(*color_rgb, alpha), z=1)
 
 
 def planter(x, z, size=1.0, sprite='cactus'):
@@ -675,8 +687,13 @@ class Trophy(Interactable):
 class Inventory:
     def __init__(self):
         self.items = []
-        self.text  = Text('', position=(-0.86, 0.42), origin=(-0.5, 0.5),
-                          scale=1.0, color=color.white, parent=camera.ui)
+        # move inventory to bottom-left and visually group it
+        self.card = make_ui_card(camera.ui, position=(-0.86, -0.36),
+                                 scale=(0.34, 0.18), alpha=140)
+        self.title = Text('INVENTORY', position=(-0.86, -0.26), origin=(-0.5, 0.5),
+                          scale=0.72, color=THEME_TEXT, parent=camera.ui)
+        self.text  = Text('', position=(-0.86, -0.34), origin=(-0.5, 0.5),
+                          scale=0.90, color=color.white, parent=camera.ui)
         self._refresh()
 
     def add(self, item):
@@ -691,6 +708,8 @@ class Inventory:
             self.text.text = 'INVENTORY\n(empty)'
         else:
             self.text.text = 'INVENTORY\n' + '\n'.join(f' • {i}' for i in self.items)
+        rows = max(2, len(self.items) + 1)
+        self.card.scale_y = 0.10 + rows * 0.045
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -699,19 +718,29 @@ class Inventory:
 class MessageLog(Entity):
     def __init__(self):
         super().__init__()
-        self.text  = Text('', position=(0, -0.40), origin=(0, 0),
-                          scale=1.2, color=color.white, parent=camera.ui)
+        # slimmer centered message log
+        self.card = make_ui_card(camera.ui, position=(0, -0.40),
+                                 scale=(0.66, 0.10), alpha=110)
+        self.text  = Text('', position=(0, -0.41), origin=(0, 0),
+                          scale=0.95, color=color.white, parent=camera.ui)
         self.timer = 0.0
 
     def show(self, msg, duration=3.0):
         self.text.text = msg
         self.timer     = duration
+        self.text.enabled = True
+        self.card.enabled = True
 
     def update(self):
         if self.timer > 0:
             self.timer -= time.dt
+            fade = max(0.0, min(1.0, self.timer / 3.0))
+            self.card.color = color.rgba(0, 0, 0, int(120 * fade))
+            self.text.color = color.rgba(255, 255, 255, int(255 * fade))
             if self.timer <= 0:
                 self.text.text = ''
+                self.text.enabled = False
+                self.card.enabled = False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -727,8 +756,10 @@ class InteractionSystem(Entity):
         super().__init__()
         self.player = player_entity
         self.target = None
-        self.prompt = Text('', origin=(0, 0), position=(0, -0.04),
-                           scale=1.1, color=color.white,
+        self.prompt_card = make_ui_card(camera.ui, position=(0, -0.08),
+                                        scale=(0.34, 0.09), alpha=145)
+        self.prompt = Text('', origin=(0, 0), position=(0, -0.085),
+                           scale=0.95, color=color.white,
                            parent=camera.ui, enabled=False)
 
     def update(self):
@@ -743,9 +774,12 @@ class InteractionSystem(Entity):
             self.target = hit.entity
             self.prompt.text    = f'[E] {hit.entity.prompt}'
             self.prompt.enabled = True
+            self.prompt_card.enabled = True
+            self.prompt_card.scale_x = min(0.52, max(0.24, 0.012 * len(self.prompt.text)))
         else:
             self.target         = None
             self.prompt.enabled = False
+            self.prompt_card.enabled = False
 
     def input(self, key):
         if key == 'e' and self.target is not None:
@@ -1559,6 +1593,23 @@ class WaveManager(Entity):
             shop.close_shop()
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Load weapon sounds if present
+# ──────────────────────────────────────────────────────────────────────────────
+SOUND_DIR = Path(__file__).parent / 'sounds'
+GUNSHOT_PATH = SOUND_DIR / 'gunshot.wav'
+RELOAD_PATH = SOUND_DIR / 'reload.wav'
+GUNSHOT_SND = None
+RELOAD_SND = None
+try:
+    if GUNSHOT_PATH.exists():
+        GUNSHOT_SND = Audio(str(GUNSHOT_PATH), loop=False, autoplay=False)
+    if RELOAD_PATH.exists():
+        RELOAD_SND = Audio(str(RELOAD_PATH), loop=False, autoplay=False)
+except Exception:
+    GUNSHOT_SND = None
+    RELOAD_SND = None
+
 class Gun(Entity):
     def __init__(self, player_entity):
         super().__init__()
@@ -1572,6 +1623,7 @@ class Gun(Entity):
         self._fire_timer   = 0.0
         self._reload_timer = 0.0
         self._reloading    = False
+        self._last_shot_time = 0.0
 
         # Viewmodel — cropped HUD sprite, kept out of the dither pass so it
         # reads like the source image instead of a tiny world-space quad.
@@ -1659,12 +1711,38 @@ class Gun(Entity):
             elif isinstance(hit.entity, TntBarrel):
                 hit.entity.take_damage(1)
 
+        # Play gunshot sound; crop short bursts for rapid-fire
+        try:
+            now = time.time() if hasattr(time, 'time') else 0
+            if GUNSHOT_SND:
+                try:
+                    if getattr(GUNSHOT_SND, 'playing', False):
+                        GUNSHOT_SND.stop()
+                except Exception:
+                    pass
+                if now - getattr(self, '_last_shot_time', 0) < 0.20:
+                    # rapid click — crop the sound slightly
+                    GUNSHOT_SND.play()
+                    invoke(lambda: GUNSHOT_SND.stop(), delay=0.12)
+                else:
+                    GUNSHOT_SND.play()
+            self._last_shot_time = now
+        except Exception:
+            pass
+
     def reload(self):
         if self._reloading or self.ammo >= self.max_ammo:
             return
         self._reloading    = True
         self._reload_timer = self.reload_time
         message_log.show('Reloading…', self.reload_time)
+        # play reload sound for the duration
+        try:
+            if RELOAD_SND:
+                RELOAD_SND.play()
+                invoke(lambda: RELOAD_SND.stop(), delay=self.reload_time)
+        except Exception:
+            pass
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1684,18 +1762,24 @@ class PlayerHUD(Entity):
         self.dead       = False
         self._death_ui  = []   # entities to clean up on restart
 
-        # Health (bottom-left)
-        self.hp_text = Text(self._hp_str(), position=(-0.86, -0.42),
-                            origin=(-0.5, 0.5), color=color.white,
-                            scale=1.4, parent=camera.ui)
-        # Ammo (bottom-right)
-        self.ammo_text = Text('12 / 12', position=(0.86, -0.42),
-                              origin=(0.5, 0.5), color=color.white,
-                              scale=1.4, parent=camera.ui)
-        # Score (top-right)
-        self.score_text = Text('SCORE 0', position=(0.86, 0.40),
-                               origin=(0.5, 1), color=color.white,
-                               scale=1.2, parent=camera.ui)
+        # Health (bottom-left) — compact card
+        self.hp_panel = make_ui_card(camera.ui, position=(-0.78, -0.42),
+                 scale=(0.28, 0.09), alpha=165)
+        self.hp_text = Text(self._hp_str(), position=(-0.88, -0.42),
+                    origin=(-0.5, 0.5), color=color.white,
+                scale=1.00, parent=camera.ui)
+        # Ammo (bottom-right) — compact card
+        self.ammo_panel = make_ui_card(camera.ui, position=(0.78, -0.42),
+                   scale=(0.28, 0.09), alpha=165)
+        self.ammo_text = Text('12 / 12', position=(0.88, -0.42),
+                      origin=(0.5, 0.5), color=color.white,
+                  scale=1.00, parent=camera.ui)
+        # Score (top-right) — smaller and tucked in
+        self.score_panel = make_ui_card(camera.ui, position=(0.84, 0.44),
+                scale=(0.22, 0.07), alpha=130)
+        self.score_text = Text('SCORE 0', position=(0.92, 0.44),
+                       origin=(0.5, 1), color=color.white,
+                   scale=0.95, parent=camera.ui)
 
         # Full-screen red flash on damage (alpha tween)
         self.flash = Entity(parent=camera.ui, model='quad', scale=(2, 1.2),
@@ -1725,7 +1809,9 @@ class PlayerHUD(Entity):
                                   parent=camera.ui)
 
         # ── Dash cooldown readout (right side, above ammo) ──────────
-        self.dash_text = Text('DASH READY', position=(0.86, -0.34),
+        self.dash_panel = make_ui_card(camera.ui, position=(0.70, -0.33),
+                           scale=(0.34, 0.08), alpha=125)
+        self.dash_text = Text('DASH READY', position=(0.90, -0.34),
                               origin=(0.5, 0.5), scale=1.0,
                               color=color.rgb(120, 230, 120),
                               parent=camera.ui)
@@ -1950,16 +2036,30 @@ inventory   = Inventory()
 message_log = MessageLog()
 interaction = InteractionSystem(player)
 
-# Crosshair
-Text('+', origin=(0, 0), scale=2, color=color.white, parent=camera.ui)
+# Crosshair (custom, crisp)
+crosshair = Entity(parent=camera.ui)
+ch_size = 0.015
+# central dot (small)
+Entity(parent=crosshair, model='quad', scale=(ch_size * 0.5, ch_size * 0.5), color=color.white,
+    position=(0, 0), z=0)
+# thin arms
+Entity(parent=crosshair, model='quad', scale=(ch_size * 0.12, ch_size * 1.8), color=color.white,
+    position=(0, ch_size * 0.85), z=0)
+Entity(parent=crosshair, model='quad', scale=(ch_size * 0.12, ch_size * 1.8), color=color.white,
+    position=(0, -ch_size * 0.85), z=0)
+Entity(parent=crosshair, model='quad', scale=(ch_size * 1.8, ch_size * 0.12), color=color.white,
+    position=(ch_size * 0.85, 0), z=0)
+Entity(parent=crosshair, model='quad', scale=(ch_size * 1.8, ch_size * 0.12), color=color.white,
+    position=(-ch_size * 0.85, 0), z=0)
 
 # Coordinates display
 coords_text = Text('X: 0  Y: 0  Z: 0', position=(0.86, 0.40), origin=(1, 1),
-                   scale=1.0, color=color.white, parent=camera.ui)
+                   scale=0.9, color=color.white, parent=camera.ui)
+coords_text.enabled = False  # hide debug coords to reduce clutter
 
 # Controls hint
 Text('WASD Move · Shift Dash · LMB Shoot · R Reload · E Use · '
-     'T Dither · Enter Restart · ESC Quit',
+    'Enter Restart · ESC Menu',
      position=(-0.86, -0.47), scale=0.80, color=color.white, parent=camera.ui)
 
 # Player HUD + gun must come after textures so SPRITES exists — created later.
@@ -2174,7 +2274,24 @@ def _make_texture(filename, generator):
 
 
 # Bumped to _v3 for the wild-west sand-and-plank patterns.
-FLOOR_TEX = _make_texture('floor_v3.png', _floor_pattern)
+# Prefer user-provided images in the repository `environement/` folder.
+ENV_DIR = Path(__file__).parent / 'environement'
+LAND_PATH = ENV_DIR / 'land.png'
+HORIZON_PATH = ENV_DIR / 'horizon.png'
+
+
+def _load_env_texture(path: Path):
+    tex = Texture(Image.open(path).convert('RGBA'))
+    tex._texture.setMagfilter(SamplerState.FT_nearest)
+    tex._texture.setMinfilter(SamplerState.FT_nearest)
+    tex._texture.setAnisotropicDegree(0)
+    return tex
+
+
+if LAND_PATH.exists():
+    FLOOR_TEX = _load_env_texture(LAND_PATH)
+else:
+    FLOOR_TEX = _make_texture('floor_v3.png', _floor_pattern)
 WALL_TEX  = _make_texture('wall_v3.png',  _wall_pattern)
 STONE_TEX = _make_texture('stone_v2.png', _stone_pattern)
 IRON_TEX  = _make_texture('iron_v2.png',  _iron_pattern)
@@ -2331,9 +2448,33 @@ Z_BACK  = TREASURE_D              # north outer wall
 Entity(model='cube', scale=(ROOM_W, 0.2, TOTAL_D),
        position=(0, -0.1, (Z_BACK + Z_FRONT) / 2),
        texture=FLOOR_TEX,
-       texture_scale=(ROOM_W / 4, TOTAL_D / 4),
+    texture_scale=(ROOM_W / 4, TOTAL_D / 4),
        color=color.white,                  # don't tint — let pattern carry the contrast
        collider='box')
+
+# If the user placed a horizon image at `environement/horizon.png`, wrap it around
+# the camera so it remains visible instead of being hidden behind walls.
+if HORIZON_PATH.exists():
+    HORIZON_TEX = _load_env_texture(HORIZON_PATH)
+    # detect aspect ratio to choose a fitting projection tweak
+    try:
+        with Image.open(HORIZON_PATH) as _img:
+            w, h = _img.size
+    except Exception:
+        w, h = 2, 1
+    aspect = float(w) / max(1.0, float(h))
+    # Use Sky (inverted sphere). For very wide panoramas, squash vertically
+    # so the image doesn't appear stretched when mapped onto the sphere.
+    sky = Sky(texture=HORIZON_TEX)
+    sky.color = color.white
+    if aspect > 2.0:
+        # panoramic equirectangular — compress vertical scale and adjust UV tiling
+        sky.scale_y = 0.55
+        try:
+            # texture_scale controls UV tiling; reduce vertical repetition
+            sky.texture_scale = (max(1.0, aspect / 2.0), 1.0)
+        except Exception:
+            pass
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Victorian greenhouse — palette of base colours
@@ -2802,34 +2943,60 @@ Trophy(position=(0, 1.5, Z_BACK - 1.5))
 # automatically at the far end and flanks of the street.
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Post-processing: 1-bit Bayer dither
-# ──────────────────────────────────────────────────────────────────────────────
-scene_tex  = P3DTexture('scene_color')
-filter_mgr = FilterManager(base.win, base.cam)
-quad       = filter_mgr.renderSceneInto(colortex=scene_tex)
-
-dither_enabled = True
-
-if quad is None:
-    print('[WARNING] FilterManager could not create render buffer; dither off.')
-    dither_enabled = False
-else:
-    scene_tex.setMagfilter(SamplerState.FT_nearest)
-    scene_tex.setMinfilter(SamplerState.FT_nearest)
-    dither_shader = P3DShader.make(P3DShader.SL_GLSL, _VERT, _FRAG)
-    quad.setShader(dither_shader)
-    quad.setShaderInput('scene_tex', scene_tex)
-    quad.setShaderInput('resolution',
-                        LVecBase2f(base.win.getXSize(), base.win.getYSize()))
-    # NOON default palette — pure 1-bit black and white
-    quad.setShaderInput('fg_color', LVecBase3f(1.00, 1.00, 1.00))
-    quad.setShaderInput('bg_color', LVecBase3f(0.00, 0.00, 0.00))
-    time_of_day.reapply()      # push the *current* phase if it's not noon
+# Dither post-processing disabled — render the scene without the 1-bit shader
+quad = None
+dither_enabled = False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# HUD updater — handles coordinates, dither toggle, and interaction input
+# ESC menu — pause the game and allow resuming or exiting from a UI overlay
+# ──────────────────────────────────────────────────────────────────────────────
+menu_open = False
+menu_root = Entity(parent=camera.ui, enabled=False)
+# centered panel
+panel = Entity(parent=menu_root, model='quad', scale=(0.6, 0.5), color=THEME_PANEL)
+Text('PAUSED', parent=menu_root, origin=(0, 0), y=0.14, scale=2.2, color=THEME_ACCENT)
+Text('Game paused', parent=menu_root, origin=(0, 0), y=0.06, scale=0.9, color=THEME_TEXT)
+
+def _make_menu_button(text, y, on_click):
+    b = Button(text=text, parent=menu_root, scale=(0.5, 0.12), y=y,
+         color=THEME_ACCENT, text_color=color.black)
+    b.on_click = on_click
+    return b
+
+_make_menu_button('Resume',  -0.06, lambda: toggle_pause_menu(False))
+_make_menu_button('Restart', -0.22, lambda: player_hud.restart())
+_make_menu_button('Exit',    -0.38, lambda: sys.exit(0))
+
+
+def toggle_pause_menu(force_state=None):
+    global menu_open
+    desired_state = (not menu_open) if force_state is None else force_state
+    if desired_state == menu_open:
+        return
+
+    menu_open = desired_state
+    menu_root.enabled = menu_open
+    application.paused = menu_open
+    mouse.locked = not menu_open
+    mouse.visible = menu_open
+    player.cursor.visible = menu_open
+    player.enabled = not menu_open
+    hud_updater.enabled = not menu_open
+    # show/hide crosshair
+    try:
+        crosshair.enabled = not menu_open
+    except NameError:
+        pass
+
+
+def input(key):
+    if key == 'escape':
+        toggle_pause_menu()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HUD updater — handles coordinates and interaction input
 # ──────────────────────────────────────────────────────────────────────────────
 class HUDUpdater(Entity):
     def __init__(self, player_entity):
@@ -2839,6 +3006,9 @@ class HUDUpdater(Entity):
         self.e_pressed = False
     
     def update(self):
+        if menu_open:
+            return
+
         # Update coordinates display
         pos = self.player.position
         coords_text.text = f'X: {pos.x:6.2f}  Y: {pos.y:6.2f}  Z: {pos.z:6.2f}'

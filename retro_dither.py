@@ -207,51 +207,17 @@ crosshair = Text('+', origin=(0, 0), scale=2,
                  color=color.white, parent=camera.ui)
 
 # ── Controls hint (rendered on the 2-D UI layer – not dithered) ───────────────
-Text('WASD · Move     Mouse · Look     T · Toggle Dither     ESC · Quit',
-     position=(-0.84, 0.47), scale=1.1, color=color.white)
+Text('WASD · Move     Mouse · Look     ESC · Quit',
+    position=(-0.84, 0.47), scale=1.1, color=color.white)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Post-processing: Bayer ordered-dither
-# ──────────────────────────────────────────────────────────────────────────────
-scene_tex  = Texture('scene_color')
-filter_mgr = FilterManager(base.win, base.cam)
-quad       = filter_mgr.renderSceneInto(colortex=scene_tex)
+# Dither post-processing disabled — render the scene without the 1-bit shader
+quad = None
+dither_enabled = False
 
-dither_enabled = True
-
-if quad is None:
-    print('[WARNING] FilterManager could not create render buffer.')
-    print('          Dither effect will be unavailable.')
-    dither_enabled = False
-else:
-    # Nearest-neighbour on the captured scene keeps any lo-fi look intact.
-    scene_tex.setMagfilter(SamplerState.FT_nearest)
-    scene_tex.setMinfilter(SamplerState.FT_nearest)
-
-    dither_shader = P3DShader.make(P3DShader.SL_GLSL, _VERT, _FRAG)
-    quad.setShader(dither_shader)
-    quad.setShaderInput('scene_tex', scene_tex)
-    quad.setShaderInput('resolution',
-                        LVecBase2f(base.win.getXSize(), base.win.getYSize()))
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Toggle dither on/off with T (useful for comparison)
-# ──────────────────────────────────────────────────────────────────────────────
 def input(key):
-    global dither_enabled
-    if key == 't' and quad is not None:
-        dither_enabled = not dither_enabled
-        if dither_enabled:
-            quad.setShader(dither_shader)
-            quad.setShaderInput('scene_tex', scene_tex)
-            quad.setShaderInput('resolution',
-                                LVecBase2f(base.win.getXSize(),
-                                           base.win.getYSize()))
-        else:
-            quad.clearShader()
-        print(f'Dither: {"ON" if dither_enabled else "OFF"}')
+    # dither toggle removed; keep input handler no-op for 't'
+    return
 
 
 app.run()
