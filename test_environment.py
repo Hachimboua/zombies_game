@@ -40,11 +40,19 @@ import sys
 
 HUD_SPRITES_DIR = Path(__file__).resolve().parent / 'textures' / 'sprites'
 
+def ui_rgb(r, g, b):
+    return color.rgb(r / 255, g / 255, b / 255)
+
+
+def ui_rgba(r, g, b, a=255):
+    return color.rgba(r / 255, g / 255, b / 255, a / 255)
+
+
 # UI Theme
-THEME_BG = color.rgba(10, 12, 16, 220)
-THEME_PANEL = color.rgba(20, 24, 30, 200)
-THEME_ACCENT = color.rgb(255, 200, 80)
-THEME_TEXT = color.rgb(235, 235, 230)
+THEME_BG = ui_rgba(10, 12, 16, 220)
+THEME_PANEL = ui_rgba(20, 24, 30, 225)
+THEME_ACCENT = ui_rgb(255, 200, 80)
+THEME_TEXT = ui_rgb(235, 235, 230)
 
 
 
@@ -119,7 +127,13 @@ def set_nearest(entity: Entity) -> None:
 
 def make_ui_card(parent, position, scale, alpha=150, color_rgb=(0, 0, 0)):
     return Entity(parent=parent, model='quad', position=position,
-                  scale=scale, color=color.rgba(*color_rgb, alpha), z=1)
+                  scale=scale, color=ui_rgba(*color_rgb, alpha), z=1)
+
+
+def make_ui_rule(parent, position, scale, color_rgb=(255, 200, 80), alpha=255):
+    return Entity(parent=parent, model='quad', position=position,
+                  scale=scale, color=ui_rgba(*color_rgb, alpha),
+                  z=0.98)
 
 
 def planter(x, z, size=1.0, sprite='cactus'):
@@ -687,13 +701,18 @@ class Trophy(Interactable):
 class Inventory:
     def __init__(self):
         self.items = []
-        # move inventory to bottom-left and visually group it
-        self.card = make_ui_card(camera.ui, position=(-0.86, -0.36),
-                                 scale=(0.34, 0.18), alpha=140)
-        self.title = Text('INVENTORY', position=(-0.86, -0.26), origin=(-0.5, 0.5),
-                          scale=0.72, color=THEME_TEXT, parent=camera.ui)
-        self.text  = Text('', position=(-0.86, -0.34), origin=(-0.5, 0.5),
-                          scale=0.90, color=color.white, parent=camera.ui)
+        self.card = make_ui_card(camera.ui, position=(-0.72, 0.43),
+                                 scale=(0.42, 0.075), alpha=150,
+                                 color_rgb=(4, 7, 9))
+        self.line = make_ui_rule(camera.ui, position=(-0.925, 0.43),
+                                 scale=(0.008, 0.075),
+                                 color_rgb=(82, 220, 185), alpha=245)
+        self.title = Text('KIT', position=(-0.90, 0.448), origin=(-0.5, 0.5),
+                          scale=0.58, color=ui_rgb(82, 220, 185),
+                          parent=camera.ui)
+        self.text = Text('', position=(-0.90, 0.414), origin=(-0.5, 0.5),
+                         scale=0.62, color=ui_rgb(228, 236, 230),
+                         parent=camera.ui)
         self._refresh()
 
     def add(self, item):
@@ -705,11 +724,12 @@ class Inventory:
 
     def _refresh(self):
         if not self.items:
-            self.text.text = 'INVENTORY\n(empty)'
+            self.text.text = 'empty slots'
         else:
-            self.text.text = 'INVENTORY\n' + '\n'.join(f' • {i}' for i in self.items)
-        rows = max(2, len(self.items) + 1)
-        self.card.scale_y = 0.10 + rows * 0.045
+            preview = ', '.join(self.items[-3:])
+            extra = max(0, len(self.items) - 3)
+            self.text.text = f'{preview}  +{extra}' if extra else preview
+        self.card.scale_x = min(0.56, max(0.34, 0.20 + 0.011 * len(self.text.text)))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -718,29 +738,39 @@ class Inventory:
 class MessageLog(Entity):
     def __init__(self):
         super().__init__()
-        # slimmer centered message log
-        self.card = make_ui_card(camera.ui, position=(0, -0.40),
-                                 scale=(0.66, 0.10), alpha=110)
-        self.text  = Text('', position=(0, -0.41), origin=(0, 0),
-                          scale=0.95, color=color.white, parent=camera.ui)
+        self.card = make_ui_card(camera.ui, position=(0, -0.245),
+                                 scale=(0.64, 0.07), alpha=170,
+                                 color_rgb=(3, 5, 7))
+        self.accent = make_ui_rule(camera.ui, position=(0, -0.286),
+                                   scale=(0.64, 0.005),
+                                   color_rgb=(255, 200, 80), alpha=245)
+        self.text = Text('', position=(0, -0.25), origin=(0, 0),
+                         scale=0.72, color=ui_rgb(238, 238, 238),
+                         parent=camera.ui)
         self.timer = 0.0
+        self.card.enabled = False
+        self.accent.enabled = False
+        self.text.enabled = False
 
     def show(self, msg, duration=3.0):
         self.text.text = msg
-        self.timer     = duration
-        self.text.enabled = True
+        self.timer = duration
         self.card.enabled = True
+        self.accent.enabled = True
+        self.text.enabled = True
 
     def update(self):
         if self.timer > 0:
             self.timer -= time.dt
-            fade = max(0.0, min(1.0, self.timer / 3.0))
-            self.card.color = color.rgba(0, 0, 0, int(120 * fade))
-            self.text.color = color.rgba(255, 255, 255, int(255 * fade))
+            fade = clamp(self.timer / 0.45, 0, 1)
+            self.card.color = ui_rgba(3, 5, 7, int(170 * fade))
+            self.accent.color = ui_rgba(255, 200, 80, int(255 * fade))
+            self.text.color = ui_rgba(238, 238, 238, int(255 * fade))
             if self.timer <= 0:
                 self.text.text = ''
                 self.text.enabled = False
                 self.card.enabled = False
+                self.accent.enabled = False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -756,11 +786,20 @@ class InteractionSystem(Entity):
         super().__init__()
         self.player = player_entity
         self.target = None
-        self.prompt_card = make_ui_card(camera.ui, position=(0, -0.08),
-                                        scale=(0.34, 0.09), alpha=145)
-        self.prompt = Text('', origin=(0, 0), position=(0, -0.085),
-                           scale=0.95, color=color.white,
+        self.prompt_card = make_ui_card(camera.ui, position=(0, -0.105),
+                                        scale=(0.30, 0.055), alpha=150,
+                                        color_rgb=(3, 5, 7))
+        self.prompt_accent = make_ui_rule(camera.ui, position=(-0.145, -0.105),
+                                          scale=(0.006, 0.055),
+                                          color_rgb=(255, 200, 80), alpha=255)
+        self.prompt_key = Text('E', origin=(0, 0), position=(-0.118, -0.108),
+                               scale=0.82, color=THEME_ACCENT,
+                               parent=camera.ui, enabled=False)
+        self.prompt = Text('', origin=(-0.5, 0), position=(-0.087, -0.108),
+                           scale=0.66, color=ui_rgb(235, 235, 235),
                            parent=camera.ui, enabled=False)
+        self.prompt_card.enabled = False
+        self.prompt_accent.enabled = False
 
     def update(self):
         origin    = camera.world_position
@@ -772,14 +811,18 @@ class InteractionSystem(Entity):
 
         if hit.hit and isinstance(hit.entity, Interactable):
             self.target = hit.entity
-            self.prompt.text    = f'[E] {hit.entity.prompt}'
+            self.prompt.text = hit.entity.prompt
             self.prompt.enabled = True
+            self.prompt_key.enabled = True
             self.prompt_card.enabled = True
-            self.prompt_card.scale_x = min(0.52, max(0.24, 0.012 * len(self.prompt.text)))
+            self.prompt_accent.enabled = True
+            self.prompt_card.scale_x = min(0.48, max(0.24, 0.16 + 0.009 * len(self.prompt.text)))
         else:
-            self.target         = None
+            self.target = None
             self.prompt.enabled = False
+            self.prompt_key.enabled = False
             self.prompt_card.enabled = False
+            self.prompt_accent.enabled = False
 
     def input(self, key):
         if key == 'e' and self.target is not None:
@@ -1334,7 +1377,7 @@ class TimeOfDay:
         window.color = sky
         self.reapply()
         if announce:
-            message_log.show(f'☀ {label}', 2.5)
+            message_log.show(f'SUN {label}', 2.5)
 
     def reapply(self):
         """Push the current fg/bg palette to the shader. Safe to call before
@@ -1370,17 +1413,17 @@ class Shop(Entity):
 
         # UI panel
         self.bg     = Entity(parent=camera.ui, model='quad',
-                             scale=(1.0, 0.85), color=color.rgba(10, 10, 10, 230),
+                             scale=(1.0, 0.85), color=ui_rgba(10, 10, 10, 230),
                              z=0.05, enabled=False)
         self.title  = Text('★ TRADING POST ★', position=(0, 0.32),
                            origin=(0, 0), scale=2.2,
-                           color=color.rgb(240, 200, 90),
+                           color=THEME_ACCENT,
                            parent=camera.ui, enabled=False)
         self.subtitle = Text('Spend score between waves', position=(0, 0.25),
                              origin=(0, 0), scale=1.1,
-                             color=color.white, parent=camera.ui, enabled=False)
+                             color=THEME_TEXT, parent=camera.ui, enabled=False)
         self.score_lbl = Text('', position=(0, 0.18), origin=(0, 0),
-                              scale=1.4, color=color.rgb(255, 230, 100),
+                              scale=1.4, color=ui_rgb(255, 230, 100),
                               parent=camera.ui, enabled=False)
 
         # One Text per item
@@ -1393,7 +1436,7 @@ class Shop(Entity):
 
         self.footer = Text('[ENTER]  Continue to next wave',
                            position=(0, -0.36), origin=(0, 0), scale=1.3,
-                           color=color.rgb(200, 200, 200),
+                           color=ui_rgb(200, 200, 200),
                            parent=camera.ui, enabled=False)
 
     # ── Open / close ─────────────────────────────────────────────
@@ -1433,8 +1476,7 @@ class Shop(Entity):
         if player_hud.score < cost:
             message_log.show(f'Not enough score for "{label}"', 1.5)
             return
-        player_hud.score -= cost
-        player_hud.score_text.text = f'SCORE {player_hud.score}'
+        player_hud.add_score(-cost)
         fn()
         message_log.show(f'Bought: {label}', 1.5)
         self._refresh()
@@ -1444,7 +1486,7 @@ class Shop(Entity):
         for t, (key, label, cost, _) in zip(self.item_texts, self.items):
             affordable = player_hud.score >= cost
             t.text  = f'[{key}]   {label:<22s}   {cost}'
-            t.color = color.white if affordable else color.rgb(120, 120, 120)
+            t.color = THEME_TEXT if affordable else ui_rgb(120, 120, 120)
 
     # ── Upgrade callbacks ────────────────────────────────────────
     def _buy_max_ammo(self):
@@ -1461,7 +1503,7 @@ class Shop(Entity):
     def _buy_max_hp(self):
         player_hud.max_hp += 25
         player_hud.hp      = min(player_hud.max_hp, player_hud.hp + 25)
-        player_hud.hp_text.text = player_hud._hp_str()
+        player_hud._refresh_hp()
 
     def _buy_reload(self):
         gun.reload_time = max(0.3, gun.reload_time * 0.75)
@@ -1484,15 +1526,13 @@ class WaveManager(Entity):
         self.wave        = 0
         self.between     = True
         self._timer      = 1.5      # short delay before wave 1
-        self.banner      = Text('', position=(0, 0.32), origin=(0, 0),
-                                scale=2.6, color=color.yellow,
+        self.banner      = Text('', position=(0, 0.22), origin=(0, 0),
+                                scale=1.85, color=THEME_ACCENT,
                                 parent=camera.ui)
-        self.subtitle    = Text('', position=(0, 0.22), origin=(0, 0),
-                                scale=1.2, color=color.white,
+        self.subtitle    = Text('', position=(0, 0.155), origin=(0, 0),
+                                scale=0.82, color=ui_rgb(238, 242, 230),
                                 parent=camera.ui)
-        self.wave_label  = Text('WAVE 0', position=(0, 0.47), origin=(0, 1),
-                                scale=1.3, color=color.white,
-                                parent=camera.ui)
+        self.wave_label = None
 
     def update(self):
         if player_hud.dead or shop.open:
@@ -1522,7 +1562,7 @@ class WaveManager(Entity):
     def start_next_wave(self):
         self.wave   += 1
         self.between = False
-        self.wave_label.text = f'WAVE {self.wave}'
+        player_hud.update_wave(self.wave)
 
         # Advance the time-of-day light tint with the wave (boss waves = NIGHT)
         time_of_day.set_for_wave(self.wave)
@@ -1584,7 +1624,7 @@ class WaveManager(Entity):
         self.wave    = 0
         self.between = True
         self._timer  = 1.5
-        self.wave_label.text = 'WAVE 0'
+        player_hud.update_wave(0)
         self.banner.text     = ''
         self.subtitle.text   = ''
         time_of_day.reset()
@@ -1828,77 +1868,116 @@ class PlayerHUD(Entity):
 
     def __init__(self, player_entity):
         super().__init__()
-        self.player     = player_entity
-        self.max_hp     = 100
-        self.hp         = self.max_hp
-        self.score      = 0
-        self.dead       = False
-        self._death_ui  = []   # entities to clean up on restart
+        self.player = player_entity
+        self.max_hp = 100
+        self.hp = self.max_hp
+        self.score = 0
+        self.dead = False
+        self._death_ui = []
 
-        # Health (bottom-left) — compact card
-        self.hp_panel = make_ui_card(camera.ui, position=(-0.78, -0.42),
-                 scale=(0.28, 0.09), alpha=165)
-        self.hp_text = Text(self._hp_str(), position=(-0.88, -0.42),
-                    origin=(-0.5, 0.5), color=color.white,
-                scale=1.00, parent=camera.ui)
-        # Ammo (bottom-right) — compact card
-        self.ammo_panel = make_ui_card(camera.ui, position=(0.78, -0.42),
-                   scale=(0.28, 0.09), alpha=165)
-        self.ammo_text = Text('12 / 12', position=(0.88, -0.42),
-                      origin=(0.5, 0.5), color=color.white,
-                  scale=1.00, parent=camera.ui)
-        # Score (top-right) — smaller and tucked in
-        self.score_panel = make_ui_card(camera.ui, position=(0.84, 0.44),
-                scale=(0.22, 0.07), alpha=130)
-        self.score_text = Text('SCORE 0', position=(0.92, 0.44),
-                       origin=(0.5, 1), color=color.white,
-                   scale=0.95, parent=camera.ui)
+        self.top_panel = make_ui_card(camera.ui, position=(0, 0.445),
+                                      scale=(0.62, 0.09), alpha=145,
+                                      color_rgb=(3, 5, 7))
+        make_ui_rule(camera.ui, position=(0, 0.394), scale=(0.62, 0.006),
+                     color_rgb=(255, 200, 80), alpha=250)
+        self.wave_text = Text('WAVE 0', position=(-0.285, 0.455),
+                              origin=(-0.5, 0.5), scale=0.74,
+                              color=ui_rgb(238, 242, 230),
+                              parent=camera.ui)
+        self.score_text = Text('0000', position=(0.285, 0.455),
+                               origin=(0.5, 0.5), scale=0.92,
+                               color=THEME_ACCENT, parent=camera.ui)
+        self.score_label = Text('SCORE', position=(0.185, 0.419),
+                                origin=(-0.5, 0.5), scale=0.45,
+                                color=ui_rgb(150, 160, 155),
+                                parent=camera.ui)
+        self.dash_text = Text('DASH READY', position=(-0.08, 0.419),
+                              origin=(0, 0), scale=0.48,
+                              color=ui_rgb(120, 230, 120),
+                              parent=camera.ui)
 
-        # Full-screen red flash on damage (alpha tween)
+        self.hp_panel = make_ui_card(camera.ui, position=(-0.62, -0.405),
+                                     scale=(0.50, 0.115), alpha=165,
+                                     color_rgb=(3, 5, 7))
+        make_ui_rule(camera.ui, position=(-0.865, -0.405),
+                     scale=(0.008, 0.115), color_rgb=(82, 220, 185), alpha=250)
+        Text('VITALS', position=(-0.835, -0.368), origin=(-0.5, 0.5),
+             color=ui_rgb(82, 220, 185), scale=0.55, parent=camera.ui)
+        self.hp_text = Text('', position=(-0.835, -0.405), origin=(-0.5, 0.5),
+                            color=ui_rgb(238, 242, 230), scale=0.74,
+                            parent=camera.ui)
+        self.hp_bar_bg = Entity(parent=camera.ui, model='quad',
+                                position=(-0.655, -0.443),
+                                scale=(0.32, 0.014),
+                                color=ui_rgb(42, 20, 24), z=0.99)
+        self.hp_bar_fill = Entity(parent=camera.ui, model='quad',
+                                  position=(-0.815, -0.443),
+                                  scale=(0.32, 0.014),
+                                  origin=(-0.5, 0),
+                                  color=ui_rgb(110, 220, 120), z=0.98)
+
+        self.ammo_panel = make_ui_card(camera.ui, position=(0.66, -0.405),
+                                       scale=(0.44, 0.115), alpha=165,
+                                       color_rgb=(3, 5, 7))
+        make_ui_rule(camera.ui, position=(0.875, -0.405),
+                     scale=(0.008, 0.115), color_rgb=(255, 200, 80), alpha=250)
+        Text('MAG', position=(0.47, -0.368), origin=(-0.5, 0.5),
+             color=ui_rgb(150, 160, 155), scale=0.55, parent=camera.ui)
+        self.ammo_text = Text('12 / 12', position=(0.47, -0.410),
+                              origin=(-0.5, 0.5), color=ui_rgb(238, 242, 230),
+                              scale=1.05, parent=camera.ui)
+        self.ammo_warning = Text('', position=(0.72, -0.410),
+                                 origin=(0, 0), color=ui_rgb(240, 95, 95),
+                                 scale=0.56, parent=camera.ui)
+
         self.flash = Entity(parent=camera.ui, model='quad', scale=(2, 1.2),
-                            color=color.rgba(255, 30, 30, 0), z=0.3)
-
-        # Persistent low-HP vignette (pulses when HP is critical)
+                            color=ui_rgba(255, 30, 30, 0), z=0.3)
         self.lowhp = Entity(parent=camera.ui, model='quad', scale=(2, 1.2),
-                            color=color.rgba(255, 0, 0, 0), z=0.4)
+                            color=ui_rgba(255, 0, 0, 0), z=0.4)
 
-        # Hit marker for tagging an enemy
-        self.hit_mark = Text('X', position=(0, 0), origin=(0, 0),
-                             color=color.rgba(255, 220, 0, 0),
-                             scale=2.5, parent=camera.ui)
+        self.hit_mark = Text('+', position=(0, 0), origin=(0, 0),
+                             color=ui_rgba(255, 220, 0, 0),
+                             scale=2.4, parent=camera.ui)
 
-        # Boss HP bar (top centre, hidden until a Boss is alive)
-        self.boss_hp_text = Text('', position=(0, 0.42), origin=(0, 0),
-                                 scale=1.4, color=color.rgb(255, 90, 90),
+        self.boss_bar_bg = Entity(parent=camera.ui, model='quad',
+                                  position=(0, 0.325), scale=(0.54, 0.02),
+                                  color=ui_rgb(46, 16, 22), z=0.99,
+                                  enabled=False)
+        self.boss_bar_fill = Entity(parent=camera.ui, model='quad',
+                                    position=(-0.27, 0.325), scale=(0.54, 0.02),
+                                    origin=(-0.5, 0), color=ui_rgb(240, 80, 80),
+                                    z=0.98, enabled=False)
+        self.boss_hp_text = Text('', position=(0, 0.352), origin=(0, 0),
+                                 scale=0.62, color=ui_rgb(250, 180, 180),
                                  parent=camera.ui, enabled=False)
 
-        # ── Combo multiplier (chain kills within 3 s) ───────────────
-        self.combo         = 1
-        self.combo_timer   = 0.0
-        self.combo_max     = 5
+        self.combo = 1
+        self.combo_timer = 0.0
+        self.combo_max = 5
         self.combo_timeout = 3.0
-        self.combo_text    = Text('', position=(0, 0.32), origin=(0, 0),
-                                  scale=2.4, color=color.rgb(255, 215, 60),
-                                  parent=camera.ui)
-
-        # ── Dash cooldown readout (right side, above ammo) ──────────
-        self.dash_panel = make_ui_card(camera.ui, position=(0.70, -0.33),
-                           scale=(0.34, 0.08), alpha=125)
-        self.dash_text = Text('DASH READY', position=(0.90, -0.34),
-                              origin=(0.5, 0.5), scale=1.0,
-                              color=color.rgb(120, 230, 120),
-                              parent=camera.ui)
+        self.combo_text = Text('', position=(0, 0.25), origin=(0, 0),
+                               scale=1.25, color=ui_rgb(255, 215, 60),
+                               parent=camera.ui)
 
         # Direction-of-damage arrows (up to N at once)
         self._arrows     = []
         self._max_arrows = 6
+        self._refresh_hp()
 
     # ── Text helpers ─────────────────────────────────────────────
     def _hp_str(self):
-        bar_len = 20
-        filled  = int(bar_len * max(0, self.hp) / self.max_hp)
-        bar     = '#' * filled + '-' * (bar_len - filled)
-        return f'HP [{bar}] {max(0, self.hp)}'
+        return f'HP {max(0, int(self.hp))} / {int(self.max_hp)}'
+
+    def _refresh_hp(self):
+        self.hp_text.text = self._hp_str()
+        ratio = clamp(max(0, self.hp) / max(1, self.max_hp), 0, 1)
+        self.hp_bar_fill.scale_x = 0.32 * ratio
+        if ratio < 0.25:
+            self.hp_bar_fill.color = ui_rgb(240, 70, 70)
+        elif ratio < 0.55:
+            self.hp_bar_fill.color = ui_rgb(240, 160, 70)
+        else:
+            self.hp_bar_fill.color = ui_rgb(110, 220, 120)
 
     # ── Public API ───────────────────────────────────────────────
     def take_damage(self, amount, source=None):
@@ -1908,9 +1987,9 @@ class PlayerHUD(Entity):
         if time.time() < self.player.invincible_until:
             return
         self.hp -= amount
-        self.hp_text.text = self._hp_str()
-        self.flash.color  = color.rgba(255, 30, 30, 160)
-        self.flash.animate_color(color.rgba(255, 30, 30, 0), duration=0.35)
+        self._refresh_hp()
+        self.flash.color  = ui_rgba(255, 30, 30, 120)
+        self.flash.animate_color(ui_rgba(255, 30, 30, 0), duration=0.35)
         if source is not None:
             self._spawn_arrow_from(source.world_position)
         if self.hp <= 0:
@@ -1920,27 +1999,36 @@ class PlayerHUD(Entity):
         if self.dead:
             return
         self.hp = min(self.max_hp, self.hp + amount)
-        self.hp_text.text = self._hp_str()
+        self._refresh_hp()
 
     def update_ammo(self, ammo, max_ammo):
         self.ammo_text.text = f'{ammo} / {max_ammo}'
+        low = ammo <= max(2, int(max_ammo * 0.2))
+        self.ammo_text.color = ui_rgb(240, 95, 95) if low else ui_rgb(238, 242, 230)
+        self.ammo_warning.text = 'LOW' if low else ''
 
     def add_score(self, points):
         self.score += points
-        self.score_text.text = f'SCORE {self.score}'
+        self.score_text.text = f'{self.score:04d}'
+
+    def update_wave(self, wave):
+        self.wave_text.text = f'WAVE {wave}'
 
     def flash_hit_marker(self):
-        self.hit_mark.color = color.rgba(255, 220, 0, 255)
-        self.hit_mark.animate_color(color.rgba(255, 220, 0, 0), duration=0.2)
+        self.hit_mark.color = ui_rgba(255, 220, 0, 255)
+        self.hit_mark.animate_color(ui_rgba(255, 220, 0, 0), duration=0.2)
 
     def update_boss_hp(self, hp, max_hp, hide=False):
         if hide or hp <= 0:
             self.boss_hp_text.enabled = False
+            self.boss_bar_bg.enabled = False
+            self.boss_bar_fill.enabled = False
             return
-        bar_len = 30
-        filled  = int(bar_len * max(0, hp) / max_hp)
-        bar     = '#' * filled + '-' * (bar_len - filled)
-        self.boss_hp_text.text    = f'★ BOSS ★ [{bar}] {max(0, hp)}'
+        ratio = clamp(max(0, hp) / max(1, max_hp), 0, 1)
+        self.boss_bar_bg.enabled = True
+        self.boss_bar_fill.enabled = True
+        self.boss_bar_fill.scale_x = 0.54 * ratio
+        self.boss_hp_text.text = f'BOSS INCOMING  {max(0, int(hp))}/{int(max_hp)}'
         self.boss_hp_text.enabled = True
 
     # ── Combo + headshot helpers ────────────────────────────────────
@@ -1959,11 +2047,11 @@ class PlayerHUD(Entity):
             self.combo_text.text = ''
 
     def show_headshot(self):
-        t = Text('HEADSHOT!', origin=(0, 0), position=(0, 0.06),
-                 scale=2.2, color=color.rgb(255, 230, 60),
+        t = Text('HEADSHOT', origin=(0, 0), position=(0, 0.06),
+                 scale=1.55, color=ui_rgb(255, 230, 60),
                  parent=camera.ui)
         t.animate_scale(0.6, duration=0.45)
-        t.animate_color(color.rgba(255, 230, 60, 0), duration=0.5)
+        t.animate_color(ui_rgba(255, 230, 60, 0), duration=0.5)
         invoke(destroy, t, delay=0.70)        # past both animate calls
 
     # ── Frame logic: low-HP pulse + arrow lifetime + combo + dash ─
@@ -1971,9 +2059,9 @@ class PlayerHUD(Entity):
         # Low-HP vignette pulses red
         if not self.dead and self.hp < self.max_hp * self.LOW_HP_PCT:
             pulse = (math.sin(time.time() * 6) * 0.5 + 0.5) * 120
-            self.lowhp.color = color.rgba(255, 0, 0, int(pulse))
+            self.lowhp.color = ui_rgba(255, 0, 0, int(pulse * 0.42))
         else:
-            self.lowhp.color = color.rgba(255, 0, 0, 0)
+            self.lowhp.color = ui_rgba(255, 0, 0, 0)
 
         # Combo timer
         if self.combo_timer > 0:
@@ -1985,11 +2073,11 @@ class PlayerHUD(Entity):
         # Dash readiness readout
         cd = self.player._dash_cd
         if cd > 0:
-            self.dash_text.text  = f'DASH  {cd:.1f}s'
-            self.dash_text.color = color.rgb(120, 120, 120)
+            self.dash_text.text  = f'DASH {cd:.1f}s'
+            self.dash_text.color = ui_rgb(185, 155, 90)
         else:
             self.dash_text.text  = 'DASH READY'
-            self.dash_text.color = color.rgb(120, 230, 120)
+            self.dash_text.color = ui_rgb(120, 230, 120)
 
         # Tick down arrows; remove expired
         for arrow in list(self._arrows):
@@ -2017,14 +2105,14 @@ class PlayerHUD(Entity):
         ent.x  = math.sin(rad) * radius
         ent.y  = math.cos(rad) * radius * 0.6   # squish for aspect
         ent.rotation_z = -rel_angle_deg
-        ent.color = color.rgba(255, 60, 60, alpha)
+        ent.color = ui_rgba(255, 60, 60, alpha)
 
     def _spawn_arrow_from(self, source_pos):
         # Drop oldest if at cap
         if len(self._arrows) >= self._max_arrows:
             destroy(self._arrows.pop(0)['ent'])
-        ent = Text('▲', origin=(0, 0), scale=1.6, parent=camera.ui,
-                   color=color.rgba(255, 60, 60, 255))
+        ent = Text('^', origin=(0, 0), scale=1.6, parent=camera.ui,
+                   color=ui_rgba(255, 60, 60, 255))
         self._arrows.append({
             'ent': ent,
             't':   self.ARROW_DURATION,
@@ -2037,11 +2125,11 @@ class PlayerHUD(Entity):
         self.dead = True
         self.player.speed = 0
         self._death_ui.append(
-            Text('YOU DIED', origin=(0, 0), position=(0, 0.08), scale=5,
+            Text('YOU DIED', origin=(0, 0), position=(0, 0.10), scale=4.4,
                  color=color.red, parent=camera.ui))
         self._death_ui.append(
             Text('press [ENTER] to restart', origin=(0, 0),
-                 position=(0, -0.02), scale=1.5,
+                 position=(0, -0.02), scale=1.35,
                  color=color.white, parent=camera.ui))
 
     def input(self, key):
@@ -2066,7 +2154,7 @@ class PlayerHUD(Entity):
         self.player._y_vel   = 0.0
         self.player.rotation_y          = 0
         self.player.camera_pivot.rotation_x = 0
-        self.hp_text.text = self._hp_str()
+        self._refresh_hp()
         # Reset combo + dash
         self.combo       = 1
         self.combo_timer = 0
@@ -2084,6 +2172,8 @@ class PlayerHUD(Entity):
                 destroy(e)
         # Hide boss bar (Boss subclasses Enemy so it was destroyed above)
         self.boss_hp_text.enabled = False
+        self.boss_bar_bg.enabled = False
+        self.boss_bar_fill.enabled = False
         # Reset wave manager
         wave_manager.reset()
         message_log.show('Restarted — show them who runs this town.', 2.5)
@@ -2109,31 +2199,18 @@ inventory   = Inventory()
 message_log = MessageLog()
 interaction = InteractionSystem(player)
 
-# Crosshair (custom, crisp)
+# Crosshair (new minimalist reticle)
 crosshair = Entity(parent=camera.ui)
-ch_size = 0.015
-# central dot (small)
-Entity(parent=crosshair, model='quad', scale=(ch_size * 0.5, ch_size * 0.5), color=color.white,
-    position=(0, 0), z=0)
-# thin arms
-Entity(parent=crosshair, model='quad', scale=(ch_size * 0.12, ch_size * 1.8), color=color.white,
-    position=(0, ch_size * 0.85), z=0)
-Entity(parent=crosshair, model='quad', scale=(ch_size * 0.12, ch_size * 1.8), color=color.white,
-    position=(0, -ch_size * 0.85), z=0)
-Entity(parent=crosshair, model='quad', scale=(ch_size * 1.8, ch_size * 0.12), color=color.white,
-    position=(ch_size * 0.85, 0), z=0)
-Entity(parent=crosshair, model='quad', scale=(ch_size * 1.8, ch_size * 0.12), color=color.white,
-    position=(-ch_size * 0.85, 0), z=0)
+Entity(parent=crosshair, model='quad', scale=(0.005, 0.005),
+       color=THEME_ACCENT, position=(0, 0), z=0)
+for x, y in ((0.016, 0), (-0.016, 0), (0, 0.016), (0, -0.016)):
+    Entity(parent=crosshair, model='quad', scale=(0.006, 0.0018),
+           color=ui_rgb(235, 235, 235), position=(x, y), z=0)
 
 # Coordinates display
 coords_text = Text('X: 0  Y: 0  Z: 0', position=(0.86, 0.40), origin=(1, 1),
                    scale=0.9, color=color.white, parent=camera.ui)
 coords_text.enabled = False  # hide debug coords to reduce clutter
-
-# Controls hint
-Text('WASD Move · Shift Dash · LMB Shoot · R Reload · E Use · '
-    'Enter Restart · ESC Menu',
-     position=(-0.86, -0.47), scale=0.80, color=color.white, parent=camera.ui)
 
 # Player HUD + gun must come after textures so SPRITES exists — created later.
 
@@ -2361,10 +2438,7 @@ def _load_env_texture(path: Path):
     return tex
 
 
-if LAND_PATH.exists():
-    FLOOR_TEX = _load_env_texture(LAND_PATH)
-else:
-    FLOOR_TEX = _make_texture('floor_v3.png', _floor_pattern)
+FLOOR_TEX = _load_env_texture(LAND_PATH)
 WALL_TEX  = _make_texture('wall_v3.png',  _wall_pattern)
 STONE_TEX = _make_texture('stone_v2.png', _stone_pattern)
 IRON_TEX  = _make_texture('iron_v2.png',  _iron_pattern)
@@ -2489,6 +2563,9 @@ time_of_day  = TimeOfDay()           # ← drives the scene_tint uniform
 shop         = Shop()                # ← opens every 5 waves
 wave_manager = WaveManager()
 
+# Gameplay toggle: keep only enemy encounters and remove static world props.
+ENEMIES_ONLY_MODE = True
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # World geometry — two rooms separated by an inner wall with a door gap
@@ -2518,10 +2595,10 @@ Z_INNER = 0                       # inner dividing wall
 Z_BACK  = TREASURE_D              # north outer wall
 
 # Floor (full footprint) — bold stone-tile texture, ~4 m per repeat
-Entity(model='cube', scale=(ROOM_W, 0.2, TOTAL_D),
+LAND_ENTITY = Entity(model='cube', scale=(ROOM_W, 0.2, TOTAL_D),
        position=(0, -0.1, (Z_BACK + Z_FRONT) / 2),
        texture=FLOOR_TEX,
-    texture_scale=(ROOM_W / 4, TOTAL_D / 4),
+       texture_scale=(1, 1),
        color=color.white,                  # don't tint — let pattern carry the contrast
        collider='box')
 
@@ -2756,7 +2833,7 @@ def barrel(x, z, h=1.2):
 def hay_bale(x, z):
     Entity(model='cube', position=(x, 0.55, z),
            scale=(1.6, 1.1, 1.0),
-           texture=FLOOR_TEX, texture_scale=(2, 1.5),
+           texture=TERRA_TEX, texture_scale=(2, 1.5),
            color=color.rgb(230, 210, 130), collider='box')
 
 # Cover layout — five "rings" of obstacles down the longer street
@@ -3033,7 +3110,8 @@ Text('Game paused', parent=menu_root, origin=(0, 0), y=0.06, scale=0.9, color=TH
 
 def _make_menu_button(text, y, on_click):
     b = Button(text=text, parent=menu_root, scale=(0.5, 0.12), y=y,
-         color=THEME_ACCENT, text_color=color.black)
+         color=ui_rgb(18, 22, 28), text_color=THEME_ACCENT,
+         highlight_color=ui_rgb(40, 46, 54), pressed_color=ui_rgb(255, 200, 80))
     b.on_click = on_click
     return b
 
@@ -3082,10 +3160,6 @@ class HUDUpdater(Entity):
         if menu_open:
             return
 
-        # Update coordinates display
-        pos = self.player.position
-        coords_text.text = f'X: {pos.x:6.2f}  Y: {pos.y:6.2f}  Z: {pos.z:6.2f}'
-        
         # Handle T key for dither toggle (using held_keys to avoid blocking other input)
         if 't' in held_keys:
             if not self.dither_t_pressed and quad is not None:
@@ -3115,7 +3189,70 @@ class HUDUpdater(Entity):
 hud_updater = HUDUpdater(player)
 
 
+def _enable_enemies_only_mode():
+    keep = {
+        player,
+        camera,
+        camera.ui,
+        inventory,
+        message_log,
+        interaction,
+        crosshair,
+        coords_text,
+        player_hud,
+        gun,
+        time_of_day,
+        shop,
+        wave_manager,
+        hud_updater,
+        menu_root,
+        panel,
+        LAND_ENTITY,
+    }
+
+    def _has_kept_ancestor(ent):
+        p = getattr(ent, 'parent', None)
+        while p is not None:
+            if p in keep:
+                return True
+            p = getattr(p, 'parent', None)
+        return False
+
+    dynamic_types = (Enemy, Boss, Charger, Bullet, HealthPickup, AmmoPickup)
+    system_types = (
+        Inventory,
+        MessageLog,
+        InteractionSystem,
+        PlayerHUD,
+        Gun,
+        TimeOfDay,
+        Shop,
+        WaveManager,
+        HUDUpdater,
+        SmoothFPC,
+    )
+
+    for ent in list(scene.entities):
+        if ent in keep:
+            continue
+        if _has_kept_ancestor(ent):
+            continue
+        if ent.parent == camera.ui:
+            continue
+        if isinstance(ent, dynamic_types) or isinstance(ent, system_types):
+            continue
+        destroy(ent)
+
+    # With static geometry removed, lock vertical motion so player doesn't fall.
+    player.gravity = 0
+    player.y = 2
+
+
+if ENEMIES_ONLY_MODE:
+    _enable_enemies_only_mode()
+
+
 # Opening message
-message_log.show('Look around with the mouse. Press [E] on the sign.', 6)
+message_log.show('Enemies-only mode: survive incoming waves.', 6)
 
 app.run()
