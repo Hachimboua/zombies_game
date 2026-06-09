@@ -347,6 +347,8 @@ class BillboardSprite(Entity):
         super().__init__(model='quad', double_sided=True, **kwargs)
 
     def update(self):
+        if not self.enabled:
+            return
         dx = camera.world_position.x - self.world_position.x
         dz = camera.world_position.z - self.world_position.z
         self.rotation_y = math.degrees(math.atan2(dx, dz))
@@ -361,7 +363,7 @@ class DecorSprite(BillboardSprite):
     def __init__(self, sprite, static=False, **kwargs):
         kwargs['texture'] = SPRITES[sprite]
         # Sensible defaults for an upright billboard sitting on the floor.
-        kwargs.setdefault('scale', (1.5, 2.0))
+        kwargs.setdefault('scale', (2.2, 3.0))
         kwargs.setdefault('origin_y', -0.5)         # so y=0 sits on the floor
         super().__init__(**kwargs)
         self.static = static
@@ -405,7 +407,7 @@ class SmoothFPC(FirstPersonController):
         self._y_vel      = 0.0             # vertical velocity (jump + gravity)
         self._mouse_vel  = Vec2(0, 0)      # smoothed mouse delta
         self._bob_t      = 0.0
-        self._cam_base_y = self.camera_pivot.y
+        self._cam_base_y = 1.6
         self.grounded    = True
 
         # ── Dash (Shift) ────────────────────────────────────────
@@ -685,6 +687,8 @@ class Trophy(Interactable):
         super().__init__(prompt='Claim trophy', **kwargs)
 
     def update(self):
+        if not self.enabled:
+            return
         dx = camera.world_position.x - self.world_position.x
         dz = camera.world_position.z - self.world_position.z
         self.rotation_y = math.degrees(math.atan2(dx, dz))
@@ -724,11 +728,20 @@ class Inventory:
 
     def _refresh(self):
         if not self.items:
-            self.text.text = 'empty slots'
-        else:
-            preview = ', '.join(self.items[-3:])
-            extra = max(0, len(self.items) - 3)
-            self.text.text = f'{preview}  +{extra}' if extra else preview
+            self.card.enabled = False
+            self.line.enabled = False
+            self.title.enabled = False
+            self.text.enabled = False
+            return
+
+        self.card.enabled = True
+        self.line.enabled = True
+        self.title.enabled = True
+        self.text.enabled = True
+
+        preview = ', '.join(self.items[-3:])
+        extra = max(0, len(self.items) - 3)
+        self.text.text = f'{preview}  +{extra}' if extra else preview
         self.card.scale_x = min(0.56, max(0.34, 0.20 + 0.011 * len(self.text.text)))
 
 
@@ -802,6 +815,8 @@ class InteractionSystem(Entity):
         self.prompt_accent.enabled = False
 
     def update(self):
+        if not self.enabled:
+            return
         origin    = camera.world_position
         direction = camera.forward
         hit = raycast(origin, direction,
@@ -839,12 +854,12 @@ class Enemy(AnimatedStateBillboard):
       - ranged: keeps distance, telegraphs a yellow flash, then hitscans
     """
 
-    def __init__(self, sprite=None, hp=3, speed=2.0, damage=10,
+    def __init__(self, sprite=None, hp=3, speed=2.4, damage=10,
                  ranged=False, fire_range=22.0, prefer_range=12.0,
                  shot_damage=6, shot_cooldown=2.0, **kwargs):
         kwargs['collider'] = 'box'
-        kwargs.setdefault('scale', (1.7, 2.3))
-        kwargs.setdefault('origin_y', -0.5)
+        kwargs.setdefault('scale', (2.5, 3.3))
+        kwargs.setdefault('origin_y', -0.55)
         animations = load_character_animations(sprite or 'Commando')
         kwargs['texture'] = animations['idle'][0]
         super().__init__(animations=animations, state='idle', frame_time=0.10,
@@ -1029,7 +1044,7 @@ class Boss(Enemy):
     def __init__(self, **kwargs):
         kwargs.setdefault('sprite',        'Tank')
         kwargs.setdefault('hp',            90)
-        kwargs.setdefault('speed',         1.7)
+        kwargs.setdefault('speed',         2.0)
         kwargs.setdefault('damage',        28)
         kwargs.setdefault('shot_damage',   10)
         kwargs.setdefault('ranged',        True)
@@ -1103,7 +1118,7 @@ class Charger(Enemy):
         # Use an existing character sprite (Slayer) for the Charger
         kwargs.setdefault('sprite',     'Slayer')
         kwargs.setdefault('hp',         3)
-        kwargs.setdefault('speed',      3.0)
+        kwargs.setdefault('speed',      3.6)
         kwargs.setdefault('damage',     16)
         kwargs.setdefault('ranged',     False)
         kwargs.setdefault('color',      color.rgb(220, 110, 110))
@@ -1127,7 +1142,7 @@ class Charger(Enemy):
             if self._charge_cd <= 0:
                 self._charge_cd        = random.uniform(3.0, 5.5)
                 self._charge_remaining = 0.9
-                self.speed             = 8.5
+                self.speed             = 10.0
                 self.color             = color.rgb(255, 60, 60)
         super().update()
 
@@ -1347,16 +1362,16 @@ class TimeOfDay:
 
     # (label,    sky / window.color,        fg_color (lit),         bg_color (shadow))
     PHASES = [
-        ('HIGH NOON',   color.rgb(220, 215, 195),
-            LVecBase3f(1.00, 1.00, 1.00), LVecBase3f(0.00, 0.00, 0.00)),
-        ('AFTERNOON',   color.rgb(240, 200, 140),
-            LVecBase3f(1.00, 0.95, 0.78), LVecBase3f(0.18, 0.10, 0.05)),
-        ('DUSK',        color.rgb(235, 130,  70),
-            LVecBase3f(1.00, 0.68, 0.32), LVecBase3f(0.32, 0.08, 0.04)),
-        ('TWILIGHT',    color.rgb(100,  80, 140),
-            LVecBase3f(0.75, 0.62, 0.96), LVecBase3f(0.10, 0.05, 0.20)),
-        ('NIGHT',       color.rgb( 22,  30,  60),
-            LVecBase3f(0.55, 0.78, 1.00), LVecBase3f(0.02, 0.04, 0.14)),
+        ('STATION CORE',   color.rgb(20, 30, 45),
+            LVecBase3f(0.8, 0.9, 1.0), LVecBase3f(0.05, 0.05, 0.1)),
+        ('ORBITAL GLOW',   color.rgb(40, 60, 90),
+            LVecBase3f(0.9, 1.0, 1.0), LVecBase3f(0.1, 0.1, 0.2)),
+        ('NEBULA VEIL',    color.rgb(70, 40, 90),
+            LVecBase3f(1.0, 0.8, 1.0), LVecBase3f(0.2, 0.1, 0.3)),
+        ('VOID HORIZON',   color.rgb(30, 10, 50),
+            LVecBase3f(0.7, 0.6, 0.9), LVecBase3f(0.05, 0.0, 0.1)),
+        ('DEEP SPACE',     color.rgb(5, 5, 15),
+            LVecBase3f(0.4, 0.6, 1.0), LVecBase3f(0.0, 0.0, 0.05)),
     ]
 
     def __init__(self):
@@ -1377,7 +1392,7 @@ class TimeOfDay:
         window.color = sky
         self.reapply()
         if announce:
-            message_log.show(f'SUN {label}', 2.5)
+            message_log.show(f'SECTOR {label}', 2.5)
 
     def reapply(self):
         """Push the current fg/bg palette to the shader. Safe to call before
@@ -1515,9 +1530,9 @@ class Shop(Entity):
 class WaveManager(Entity):
     # Spawn zones (x_min, x_max, z_min, z_max) — all far from the start
     SPAWN_AREAS = [
-        (-18,  18,  26,  34),   # far north
-        (-20, -16,  -8,  24),   # west flank
-        ( 16,  20,  -8,  24),   # east flank
+        (-40,  40,  60,  80),   # far north
+        (-50, -30,  -20,  60),  # west flank
+        ( 30,  50,  -20,  60),  # east flank
     ]
     INTERMISSION = 4.0           # seconds between waves
 
@@ -1535,6 +1550,8 @@ class WaveManager(Entity):
         self.wave_label = None
 
     def update(self):
+        if not self.enabled:
+            return
         if player_hud.dead or shop.open:
             return
         if self.between:
@@ -1593,7 +1610,7 @@ class WaveManager(Entity):
         n_charger  = max(0, self.wave - 1) if self.wave >= 2 else 0
         n_charger  = min(n_charger, n // 3)
         base_hp    = 2 + self.wave + post_boss
-        base_speed = 1.5 + min(self.wave * 0.1, 1.2)
+        base_speed = 1.8 + min(self.wave * 0.12, 1.5)
         for i in range(n):
             area = random.choice(self.SPAWN_AREAS)
             x = random.uniform(area[0], area[1])
@@ -1864,7 +1881,7 @@ class Gun(Entity):
 class PlayerHUD(Entity):
     LOW_HP_PCT       = 0.30
     ARROW_DURATION   = 1.5
-    SPAWN_POS        = Vec3(0, 2, -32)
+    SPAWN_POS        = Vec3(0, 1.6, -80)
 
     def __init__(self, player_entity):
         super().__init__()
@@ -2188,7 +2205,7 @@ window.color = color.rgb(140, 130, 110)      # dusty noon-sky beige — bright d
 base.render.setAntialias(AntialiasAttrib.MNone)
 
 # ── Player ────────────────────────────────────────────────────────────────────
-player = SmoothFPC(y=2, z=-32, origin_y=-0.5, speed=6, jump_height=1.8)
+player = SmoothFPC(y=1.6, z=-80, origin_y=-0.5, speed=6, jump_height=1.8)
 player.collider = 'box'        # explicit capsule-ish collider for the player
 player.cursor.visible = False
 # Face north up the street toward the enemies on spawn
@@ -2581,9 +2598,9 @@ ENEMIES_ONLY_MODE = True
 #       │                     └─────────────────────┘
 #                              ←──────── X ────────→
 #
-ROOM_W      = 46         # street width  (X)   — wider town
-HALL_D      = 38         # south half  (Z)     — player starts here
-TREASURE_D  = 38         # north half  (Z)     — enemies advance from here
+ROOM_W      = 120         # street width  (X)   — much wider town
+HALL_D      = 100         # south half  (Z)     — player starts here
+TREASURE_D  = 100         # north half  (Z)     — enemies advance from here
 ROOM_H      = 10         # taller buildings, plenty of open sky
 WALL_T      = 0.4        # wall thickness
 DOOR_W      = 3.0        # doorway gap width
@@ -2598,7 +2615,7 @@ Z_BACK  = TREASURE_D              # north outer wall
 LAND_ENTITY = Entity(model='cube', scale=(ROOM_W, 0.2, TOTAL_D),
        position=(0, -0.1, (Z_BACK + Z_FRONT) / 2),
        texture=FLOOR_TEX,
-       texture_scale=(1, 1),
+       texture_scale=(10, 10),
        color=color.white,                  # don't tint — let pattern carry the contrast
        collider='box')
 
@@ -2758,14 +2775,14 @@ BLDG_TYPES = ['saloon', 'sheriff', 'bank', 'general_store']
 for i, z in enumerate(range(int(Z_FRONT) + 5, int(Z_BACK), 10)):
     name = BLDG_TYPES[i % len(BLDG_TYPES)]
     s = DecorSprite(sprite=name, position=(-BLDG_INSET, 0, z),
-                    scale=(7, 6), static=True)
+                    scale=(10, 9), static=True)
     s.rotation_y = 90
 
 # East side (positive X) — static pictures pinned facing west
 for i, z in enumerate(range(int(Z_FRONT) + 9, int(Z_BACK), 10)):
     name = BLDG_TYPES[(i + 2) % len(BLDG_TYPES)]
     s = DecorSprite(sprite=name, position=(BLDG_INSET, 0, z),
-                    scale=(7, 6), static=True)
+                    scale=(10, 9), static=True)
     s.rotation_y = -90
 
 # Wanted posters tacked to the wall — also static
@@ -2775,32 +2792,32 @@ for i, z in enumerate(range(int(Z_FRONT) + 9, int(Z_BACK), 10)):
 # ── Street props (Y-axis billboards) ─────────────────────────────────────────
 _TOWN_PROPS = [
     # Cacti scattered along the dusty edges
-    ('cactus',         -10,  -20, 1.2, 2.0),
-    ('cactus',          11,  -18, 1.4, 2.2),
-    ('cactus',         -12,    2, 1.0, 1.7),
-    ('cactus',          12,    8, 1.3, 2.0),
-    ('cactus',         -11,   20, 1.1, 1.8),
-    ('cactus',          10,   22, 1.2, 1.9),
+    ('cactus',         -10,  -20, 1.8, 3.0),
+    ('cactus',          11,  -18, 2.1, 3.3),
+    ('cactus',         -12,    2, 1.5, 2.5),
+    ('cactus',          12,    8, 1.9, 3.0),
+    ('cactus',         -11,   20, 1.6, 2.7),
+    ('cactus',          10,   22, 1.8, 2.8),
 
     # Hitching posts in front of the saloon (west side, near start)
-    ('hitching_post', -BLDG_INSET + 3.0, -15, 1.8, 1.2),
-    ('hitching_post', -BLDG_INSET + 3.0,  -5, 1.8, 1.2),
+    ('hitching_post', -BLDG_INSET + 3.0, -15, 2.7, 1.8),
+    ('hitching_post', -BLDG_INSET + 3.0,  -5, 2.7, 1.8),
     # Water troughs on the east side
-    ('water_trough',   BLDG_INSET - 3.0, -10, 2.0, 1.0),
-    ('water_trough',   BLDG_INSET - 3.0,  12, 2.0, 1.0),
+    ('water_trough',   BLDG_INSET - 3.0, -10, 3.0, 1.5),
+    ('water_trough',   BLDG_INSET - 3.0,  12, 3.0, 1.5),
 
     # Wagons mid-street as cover landmarks
-    ('wagon',          -4,    0, 3.0, 1.8),
-    ('wagon',           5,   16, 3.0, 1.8),
+    ('wagon',          -4,    0, 4.5, 2.7),
+    ('wagon',           5,   16, 4.5, 2.7),
 
     # Tumbleweeds scattered for atmosphere
-    ('tumbleweed',     -7,   -8, 0.9, 0.9),
-    ('tumbleweed',      3,    6, 1.0, 1.0),
-    ('tumbleweed',     -2,   18, 0.8, 0.8),
+    ('tumbleweed',     -7,   -8, 1.35, 1.35),
+    ('tumbleweed',      3,    6, 1.5, 1.5),
+    ('tumbleweed',     -2,   18, 1.2, 1.2),
 
     # Wanted posters tacked to a couple of buildings
-    ('wanted_poster', -BLDG_INSET + 0.3, -12, 1.0, 1.4),
-    ('wanted_poster',  BLDG_INSET - 0.3,   4, 1.0, 1.4),
+    ('wanted_poster', -BLDG_INSET + 0.3, -12, 1.5, 2.1),
+    ('wanted_poster',  BLDG_INSET - 0.3,   4, 1.5, 2.1),
 ]
 for name, x, z, sw, sh in _TOWN_PROPS:
     # Wanted posters are static (pinned to the wall); everything else
@@ -3102,22 +3119,34 @@ dither_enabled = False
 # ESC menu — pause the game and allow resuming or exiting from a UI overlay
 # ──────────────────────────────────────────────────────────────────────────────
 menu_open = False
-menu_root = Entity(parent=camera.ui, enabled=False)
-# centered panel
-panel = Entity(parent=menu_root, model='quad', scale=(0.6, 0.5), color=THEME_PANEL)
-Text('PAUSED', parent=menu_root, origin=(0, 0), y=0.14, scale=2.2, color=THEME_ACCENT)
-Text('Game paused', parent=menu_root, origin=(0, 0), y=0.06, scale=0.9, color=THEME_TEXT)
+menu_root = Entity(parent=camera.ui, enabled=False, ignore_paused=True)
+
+# Full-screen dimming backdrop
+backdrop = Entity(parent=menu_root, model='quad', scale=(2, 2), color=color.rgba(0, 0, 0, 180), z=1, ignore_paused=True)
+
+# Centered styled panel
+panel = Entity(parent=menu_root, model='quad', scale=(0.65, 0.8), color=THEME_PANEL, ignore_paused=True)
+# Decorative borders for the panel
+border_top = Entity(parent=panel, model='quad', scale=(1, 0.01), position=(0, 0.5, -0.01), color=THEME_ACCENT, ignore_paused=True)
+border_bottom = Entity(parent=panel, model='quad', scale=(1, 0.01), position=(0, -0.5, -0.01), color=THEME_ACCENT, ignore_paused=True)
+accent_glow = Entity(parent=panel, model='quad', scale=(1.05, 1.05), position=(0, 0, 0.01), color=ui_rgba(255, 200, 80, 40), ignore_paused=True)
+
+Text('SYSTEM PAUSED', parent=menu_root, origin=(0, 0), y=0.25, scale=2.4, color=THEME_ACCENT, ignore_paused=True)
+Text('Orbital sequence suspended', parent=menu_root, origin=(0, 0), y=0.17, scale=0.8, color=THEME_TEXT, ignore_paused=True)
 
 def _make_menu_button(text, y, on_click):
-    b = Button(text=text, parent=menu_root, scale=(0.5, 0.12), y=y,
-         color=ui_rgb(18, 22, 28), text_color=THEME_ACCENT,
-         highlight_color=ui_rgb(40, 46, 54), pressed_color=ui_rgb(255, 200, 80))
+    # Button with a slightly more tech-styled appearance
+    b = Button(text=text, parent=menu_root, scale=(0.5, 0.1), y=y,
+         color=ui_rgb(15, 18, 24), text_color=THEME_ACCENT,
+         highlight_color=ui_rgb(35, 40, 50), pressed_color=THEME_ACCENT,
+         ignore_paused=True)
+    b.text_entity.scale = 0.8
     b.on_click = on_click
     return b
 
-_make_menu_button('Resume',  -0.06, lambda: toggle_pause_menu(False))
-_make_menu_button('Restart', -0.22, lambda: player_hud.restart())
-_make_menu_button('Exit',    -0.38, lambda: sys.exit(0))
+_make_menu_button('RESUME MISSION',  0.02, lambda: toggle_pause_menu(False))
+_make_menu_button('RESTART SEQUENCE', -0.11, lambda: (player_hud.restart(), toggle_pause_menu(False)))
+_make_menu_button('ABORT TO VOID',    -0.24, lambda: sys.exit(0))
 
 
 def toggle_pause_menu(force_state=None):
@@ -3134,6 +3163,11 @@ def toggle_pause_menu(force_state=None):
     player.cursor.visible = menu_open
     player.enabled = not menu_open
     hud_updater.enabled = not menu_open
+    try:
+        interaction.enabled = not menu_open
+        gun.enabled = not menu_open
+    except NameError:
+        pass
     # show/hide crosshair
     try:
         crosshair.enabled = not menu_open
@@ -3250,6 +3284,8 @@ def _enable_enemies_only_mode():
 
 if ENEMIES_ONLY_MODE:
     _enable_enemies_only_mode()
+    player.y = 1.6
+    player.z = -80
 
 
 # Opening message

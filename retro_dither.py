@@ -131,7 +131,7 @@ window.color = color.rgb(45, 45, 45)
 base.render.setAntialias(AntialiasAttrib.MNone)
 
 # ── Player ────────────────────────────────────────────────────────────────────
-player = FirstPersonController(y=1, origin_y=-0.5)
+player = FirstPersonController(y=-0.5, origin_y=0)
 player.speed        = 5
 player.mouse_sensitivity = Vec2(40, 40)
 player.cursor.visible    = False
@@ -145,7 +145,7 @@ HW     = ROOM_W / 2
 Entity(model='plane',
        scale=(ROOM_W, 1, ROOM_W), y=0,
     texture=load_asset('floor_v3.png'),
-    texture_scale=(ROOM_W / 4, ROOM_W / 4),
+    texture_scale=(ROOM_W * 3, ROOM_W * 3),
     color=color.white,
        collider='box')
 
@@ -187,11 +187,11 @@ Entity(model='cube',
 # ── Billboard sprites ─────────────────────────────────────────────────────────
 # Use the actual sprite textures shipped in textures/sprites.
 _SPRITES = [
-    ('tree',         ( 3,  2,  3), (1.3, 2.6, 1)),
-    ('cactus',       (-3,  2,  3), (1.1, 2.2, 1)),
-    ('wagon',        ( 0,  2, -5), (1.8, 1.2, 1)),
-    ('wanted_poster',( 5,  2, -3), (1.0, 1.4, 1)),
-    ('trophy',       (-5,  2, -3), (1.0, 1.6, 1)),
+    ('tree',         ( 3,  2,  3), (2.0, 4.0, 1)),
+    ('cactus',       (-3,  2,  3), (1.7, 3.4, 1)),
+    ('wagon',        ( 0,  2, -5), (2.7, 1.8, 1)),
+    ('wanted_poster',( 5,  2, -3), (1.5, 2.1, 1)),
+    ('trophy',       (-5,  2, -3), (1.5, 2.4, 1)),
 ]
 for sprite_name, pos, scale in _SPRITES:
     sp = BillboardSprite(
