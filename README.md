@@ -1,4 +1,4 @@
-# Game Hajji
+# Space Zombies game
 
 An Ursina-based 1-bit dithered FPS demo with animated sprites, pickups, interactable objects, and enemy/boss encounters.
 
